@@ -1,0 +1,232 @@
+---
+title: "CSSS 512 HW 3"
+author: "Chris Hess"
+date: "May 10, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(forecast)
+library(nlme)
+
+'%!in%' <- function(x, y)!('%in%'(x, y))
+
+#key theoretical perspectives:
+
+#1. economic performance
+#2. spillovers/coattails
+#3. trends
+
+#M1 - control for midterm effects, presidential and gubernatorial unemployment 
+#     effects, and presidential and gubernatorial coattails
+
+#M2 - control for all M1 variables and region specific trends
+```
+
+## Problem 1
+
+### Part a
+
+```{r prob 1a}
+#process data
+house <- read_csv("statehouse.csv") %>%
+  filter(GovCycle == 1, #gov cycle needs to be 2010, 2014, 2018...
+         HouseTerm == 2) %>% #2 yr house term only
+  arrange(State, Year) %>% #arrange by State, then year within States
+  group_by(State) %>% #group rows by State for lagging
+  mutate(DemHouseShareL1 = lag(DemHouseShare, 1), #use stats::lag with properly ordered tbl
+         DemHouseShareL2 = lag(DemHouseShare, 2),
+         DemHouseShareL3 = lag(DemHouseShare, 3),
+         DemHouseShareL4 = lag(DemHouseShare, 4))
+
+#double check work using stat::lag()
+#house %>% 
+#  select(State, Year, DemHouseShare, DemHouseShareL1, DemHouseShareL2, DemHouseShareL3, DemHouseShareL4) %>% 
+#  View()
+
+#28 states
+length(unique(house$State))
+
+#20 periods
+length(unique(house$Year))
+```
+
+### Part b
+
+```{r prob 1b}
+#make some file structure for output
+if(!dir.exists("output")){
+  dir.create("output")
+  dir.create("output/ts")
+  dir.create("output/acf")
+  dir.create("output/pacf")
+}
+
+#empty obj for unit root test results
+unitroot.tbl <- NULL
+
+#iterate through states
+for(state in unique(house$State)){
+  
+  #pull the state's ts
+  ts <- house %>%
+    filter(State == state) %>%
+    pull(DemHouseShare)
+  
+  #make it ts class
+  ts <- ts(ts, start = 1978, end = 2016, frequency = 1/2)
+  
+  #plot the ts
+  TS <- autoplot(ts) +
+    scale_y_continuous(labels = scales::percent) +
+    labs(title = paste0("Democratic House Share for ", house$Statename[house$State == state])) +
+    theme_minimal()
+  
+  #plot the ACF
+  ACF <- ggAcf(ts) +
+    labs(title = paste0("ACF for ", house$Statename[house$State == state])) +
+    theme_minimal()
+  
+  #plot the PACF
+  PACF <- ggPacf(ts) +
+    labs(title = paste0("PACF for ", house$Statename[house$State == state])) +
+    theme_minimal()
+  
+  #rum ADF test, parse results to row
+  ADF <- tseries::adf.test(ts)
+  ADF.row <- data.frame(state = state, 
+                        test = "ADF", 
+                        statistic = ADF[['statistic']], 
+                        parameter = ADF[['parameter']], 
+                        p.value = ADF[['p.value']],
+                        stringsAsFactors = F)
+  
+  #run PP test, parse results to row
+  PP <- PP.test(ts)
+  PP.row <- data.frame(state = state, 
+                       test = "PP", 
+                       statistic = PP[['statistic']], 
+                       parameter = PP[['parameter']],
+                       p.value = PP[['p.value']],
+                       stringsAsFactors = F)
+
+  #write graphics to pdf
+  ggsave(TS, filename = paste0("./output/ts/", state, "_ts.pdf"),
+         width = 8, height = 6, dpi = 300)
+  ggsave(ACF, filename = paste0("./output/acf/", state, "_acf.pdf"),
+         width = 8, height = 6, dpi = 300)
+  ggsave(PACF, filename = paste0("./output/pacf/", state, "_pacf.pdf"),
+         width = 8, height = 6, dpi = 300)
+  
+  #add row to unit root tbl
+  unitroot.tbl <- bind_rows(unitroot.tbl, ADF.row, PP.row)
+  
+  #NB: NEED TO ADD PURTEST, CANNOT INSTALL PKG ON PLANE
+}
+
+#write unit root tbl to storage
+write_csv(unitroot.tbl, "output/unitroot_tests.csv")
+
+#plot unit root p.val dist
+ggplot(unitroot.tbl, aes(x = p.value, fill = test)) + 
+  facet_wrap(~ test) +
+  geom_histogram(binwidth = .2) +
+  theme_minimal() +
+  scale_fill_brewer(palette = "Set1")
+```
+
+### Part c
+
+```{r prob 1.c}
+house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails | State, 
+                     data = house)
+
+#no dynamics, just covariates + state random effect
+m1_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+            random = ~ 1,
+            data = house)
+summary(m1_a)
+
+#AR(1)
+m1_b <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+            random = ~ 1,
+            correlation = corARMA(p = 1, q = 0),
+            data = house)
+summary(m1_b)
+
+#MA(1)
+m1_d <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+            random = ~ 1,
+            correlation = corARMA(p = 0, q = 1),
+            data = house)
+summary(m1_d)
+
+#ARMA(1,1)
+m1_e <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+            random = ~ 1,
+            correlation = corARMA(p = 1, q = 1),
+            data = house)
+summary(m1_e)
+
+#AR(1) appears to fit best. The MA(1) contribution is small, and higher-order 
+#autoregression also does not seem to be present
+```
+
+ 
+### Part d 
+ 
+```{r prob 1.d}
+house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
+                       Year * Midwest + Year * South + Year * West | State, 
+                     data = house)
+
+#no dynamics, just covariates + state random effect
+m1_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
+                       Year * Midwest + Year * South + Year * West,
+            random = ~ 1,
+            data = house)
+summary(m1_a)
+
+#AR(1)
+m1_b <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
+                       Year * Midwest + Year * South + Year * West,
+            random = ~ 1,
+            correlation = corARMA(p = 1, q = 0),
+            data = house)
+summary(m1_b)
+
+#MA(1)
+m1_d <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
+                       Year * Midwest + Year * South + Year * West,
+            random = ~ 1,
+            correlation = corARMA(p = 0, q = 1),
+            data = house)
+summary(m1_d)
+
+#ARMA(1,1)
+m1_e <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
+                       Year * Midwest + Year * South + Year * West,
+            random = ~ 1,
+            correlation = corARMA(p = 1, q = 1),
+            data = house)
+summary(m1_e)
+
+#AR(1) appears to fit best. The MA(1) contribution is small, and higher-order 
+#autoregression also does not seem to be present
+```
+
+ 
+
+
+
+
+
+
+
+
+
+
+
+
+
