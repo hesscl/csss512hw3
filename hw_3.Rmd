@@ -10,6 +10,7 @@ library(tidyverse)
 library(forecast)
 library(plm)
 library(nlme)
+library(simcf)
 
 '%!in%' <- function(x, y)!('%in%'(x, y))
 
@@ -145,8 +146,7 @@ ggplot(unitroot.tbl, aes(x = p.value, fill = test)) +
 ### Part c
 
 ```{r prob 1.c}
-house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails | State, 
-                     data = house)
+house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails | State, data = house)
 
 #no dynamics, just covariates + state random effect
 re_m1_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
@@ -184,8 +184,7 @@ summary(re_m1_d)
  
 ```{r prob 1.d}
 #M1 + region specific trends
-house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West | State, 
-                     data = house)
+house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + (Year * Midwest) + (Year * South) + (Year * West) | State, data = house)
 
 #no dynamics, just covariates + state random effect
 re_m2_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West,
@@ -223,16 +222,16 @@ summary(re_m2_d)
 ```{r prob 1.e}
 house_p <- pdata.frame(house, index = "State")
 
-fe_m1_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year, data= house_p, model = "within", effect = "individual")
+fe_m1_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,  data= house_p, model = "within", effect = "individual")
 summary(fe_m1_a)
 
-fe_m1_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+fe_m1_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
 summary(fe_m1_b)
 
-fe_m1_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
+fe_m1_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
 summary(fe_m1_c)
 
-fe_m1_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
+fe_m1_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
 summary(fe_m1_d)
 
 #model b (AR(1)) is best
@@ -242,16 +241,16 @@ summary(fe_m1_d)
 
 ```{r prob 1.f}
 #M1 + region specific trends
-fe_m2_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West), data= house_p, model = "within", effect = "individual")
+fe_m2_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_a)
 
-fe_m2_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West) + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+fe_m2_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_b)
 
-fe_m2_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West) + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
+fe_m2_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_c)
 
-fe_m2_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West) + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
+fe_m2_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_d)
 
 #model b (AR(1)) is best
@@ -284,7 +283,73 @@ summary(fe_m2_d)
 #out the forecasts, use the simcf library’s ldvsimev(), pay close attention to the
 #example code, and think through all modifications you need to make.
 
+house <- house %>%
+  select(State, DemHouseShare, PartisanMidterm, PresUnem, GovUnem, PresCoattails,
+         GovCoattails, Year, West, South, Midwest, DemHouseShareL1) %>%
+  na.omit() %>%
+  arrange(State, Year) %>%
+  group_by(State) %>%
+  mutate(time = row_number(),
+         timeXmidwest = time * Midwest,
+         timeXwest = time * West,
+         timeXsouth = time * South)
+house_p <- pdata.frame(house, index = "State")
 
+fe_m2_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + time + timeXmidwest + timeXwest + timeXsouth + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+summary(fe_m2_b)
+
+# Extract model results
+pe.fe2_b <- coef(fe_m2_b)                                 # Point estimates of parameters
+vc.fe2_b <- vcov(fe_m2_b)                                   # Var-cov matrix of point estimates
+se.fe2_b <- sqrt(diag(vc.fe2_b))                            # std erros of point estimates
+tstat.fe2_b <- abs(pe.fe2_b/se.fe2_b)                        # t-statistics
+df.fe2_b <- rep(fe_m1_b$df.residual, length(tstat.fe2_b))  # residual degrees of freedom
+pval.fe2_b <- 2*pt(tstat.fe2_b, df.fe2_b, lower.tail=FALSE)  # p-values
+fe.fe2_b <- fixef(fe_m2_b)                                # the (removed) fixed effects by group 
+resid.fe2_b <- resid(fe_m2_b)                             # Residuals
+
+# Interpret the model using custom code
+sims <- 1000
+simparam <- MASS::mvrnorm(sims,pe.fe2_b,vc.fe2_b)
+# Pull off the simulated lag coefficient
+simphi <- simparam[,1]
+# Put together the "constant" term (avg of the FEs, or a specific FE if you like)
+# with the rest of the regressors
+simbetas <- cbind(rep(mean(fe.fe2_b), sims), simparam[,2:ncol(simparam)])
+
+formula <- "DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + time + timeXmidwest + ytimeXwest + timeXsouth"  
+formula <- as.formula(formula)
+  
+periods.out <- 2
+xhyp <- cfMake(formula, house_p, periods.out)
+for(i in 1:periods.out){
+  xhyp <- cfChange(xhyp, "Year", x=2019, scen=1)
+  xhyp <- cfChange(xhyp, "Year", x=2021, scen=2)
+
+  xhyp <- cfChange(xhyp, "PartisanMidterm", x = -1, xpre = 0, scen=1)
+  xhyp <- cfChange(xhyp, "PartisanMidterm", x = 0, scen=2)
+  
+  xhyp <- cfChange(xhyp, "PresUnem", x=-1*(3.6-5.97), scen=i)
+  xhyp <- cfChange(xhyp, "GovUnem", x=-1*(3.6-5.97), scen=1)
+  xhyp <- cfChange(xhyp, "GovUnem", x=1*(3.6-5.97), scen=i)
+
+  xhyp <- cfChange(xhyp, "GovCoattails", x=1, scen=1)
+  xhyp <- cfChange(xhyp, "PresCoattails", x=1, scen=2)
+}  
+
+phi <- mean(simphi) 
+lagY <- mean(house$DemHouseShareL1, na.rm=T) # Hypothetical previous change in Y for simulation
+
+# Simulate expected values of Y (on original level scale)
+# out to periods.out given hypothetical future values of X,
+# initial lags of the change in Y, and an initial level of Y
+sim.ev2 <- ldvsimev(xhyp,               # The matrix of hypothetical x's
+                    simbetas,           # The matrix of simulated betas
+                    ci=0.95,            # Desired confidence interval
+                    phi=phi,            # estimated AR parameters; length must match lagY 
+                    lagY=lagY           # lags of y, most recent last
+                    )
+sim.ev2
 ```
 
 
