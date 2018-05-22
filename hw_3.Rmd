@@ -8,6 +8,7 @@ output: html_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(forecast)
+library(plm)
 library(nlme)
 
 '%!in%' <- function(x, y)!('%in%'(x, y))
@@ -35,12 +36,12 @@ house <- read_csv("statehouse.csv") %>%
          HouseTerm == 2) %>% #2 yr house term only
   arrange(State, Year) %>% #arrange by State, then year within States
   group_by(State) %>% #group rows by State for lagging
-  mutate(DemHouseShareL1 = lag(DemHouseShare, 1), #use stats::lag with properly ordered tbl
+  mutate(DemHouseShareL1 = lag(DemHouseShare, 1), #use dplyr::lag with properly ordered tbl
          DemHouseShareL2 = lag(DemHouseShare, 2),
          DemHouseShareL3 = lag(DemHouseShare, 3),
          DemHouseShareL4 = lag(DemHouseShare, 4))
 
-#double check work using stat::lag()
+#double check work using dplyr::lag()
 #house %>% 
 #  select(State, Year, DemHouseShare, DemHouseShareL1, DemHouseShareL2, DemHouseShareL3, DemHouseShareL4) %>% 
 #  View()
@@ -53,6 +54,8 @@ length(unique(house$Year))
 ```
 
 ### Part b
+
+Looks like AR(1) processes in most states. Some of the observed time-series look non-stationary given no reversion to a mean over the full length of periods. The nonstationary conclusion is also supported by a fair number `adf.test` and `PP.test` p-values falling outside of the conventional p<.05 threshold. States with clear change over the period show decreashing democratic vote shares over the full set of periods, though there are states like New York which oppose this direction. The IPS tests suggest that we could consider the panel as stationary with individual intercepts and trends.
 
 ```{r prob 1b}
 #make some file structure for output
@@ -121,9 +124,12 @@ for(state in unique(house$State)){
   
   #add row to unit root tbl
   unitroot.tbl <- bind_rows(unitroot.tbl, ADF.row, PP.row)
-  
-  #NB: NEED TO ADD PURTEST, CANNOT INSTALL PKG ON PLANE
 }
+
+#panel unit root test
+ts <- with(house, data.frame(split(DemHouseShare, as.character(State))))
+purtest(ts, pmax = 4, exo = "intercept", house_p, test = "ips")
+purtest(ts, pmax = 4, exo = "trend", house_p, test = "ips")
 
 #write unit root tbl to storage
 write_csv(unitroot.tbl, "output/unitroot_tests.csv")
@@ -131,7 +137,7 @@ write_csv(unitroot.tbl, "output/unitroot_tests.csv")
 #plot unit root p.val dist
 ggplot(unitroot.tbl, aes(x = p.value, fill = test)) + 
   facet_wrap(~ test) +
-  geom_histogram(binwidth = .2) +
+  geom_histogram(binwidth = .05) +
   theme_minimal() +
   scale_fill_brewer(palette = "Set1")
 ```
@@ -143,31 +149,31 @@ house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + Pres
                      data = house)
 
 #no dynamics, just covariates + state random effect
-m1_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+re_m1_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
             random = ~ 1,
             data = house)
-summary(m1_a)
+summary(re_m1_a)
 
 #AR(1)
-m1_b <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+re_m1_b <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
             random = ~ 1,
             correlation = corARMA(p = 1, q = 0),
             data = house)
-summary(m1_b)
+summary(re_m1_b)
 
 #MA(1)
-m1_d <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+re_m1_c <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
             random = ~ 1,
             correlation = corARMA(p = 0, q = 1),
             data = house)
-summary(m1_d)
+summary(re_m1_c)
 
 #ARMA(1,1)
-m1_e <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
+re_m1_d <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,
             random = ~ 1,
             correlation = corARMA(p = 1, q = 1),
             data = house)
-summary(m1_e)
+summary(re_m1_d)
 
 #AR(1) appears to fit best. The MA(1) contribution is small, and higher-order 
 #autoregression also does not seem to be present
@@ -177,46 +183,121 @@ summary(m1_e)
 ### Part d 
  
 ```{r prob 1.d}
-house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
-                       Year * Midwest + Year * South + Year * West | State, 
+#M1 + region specific trends
+house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West | State, 
                      data = house)
 
 #no dynamics, just covariates + state random effect
-m1_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
-                       Year * Midwest + Year * South + Year * West,
+re_m2_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West,
             random = ~ 1,
             data = house)
-summary(m1_a)
+summary(re_m2_a)
 
 #AR(1)
-m1_b <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
-                       Year * Midwest + Year * South + Year * West,
+re_m2_b <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West,
             random = ~ 1,
             correlation = corARMA(p = 1, q = 0),
             data = house)
-summary(m1_b)
+summary(re_m2_b)
 
 #MA(1)
-m1_d <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
-                       Year * Midwest + Year * South + Year * West,
+re_m2_c <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West,
             random = ~ 1,
             correlation = corARMA(p = 0, q = 1),
             data = house)
-summary(m1_d)
+summary(re_m2_c)
 
 #ARMA(1,1)
-m1_e <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails +
-                       Year * Midwest + Year * South + Year * West,
+re_m2_d <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West,
             random = ~ 1,
             correlation = corARMA(p = 1, q = 1),
             data = house)
-summary(m1_e)
+summary(re_m2_d)
 
-#AR(1) appears to fit best. The MA(1) contribution is small, and higher-order 
-#autoregression also does not seem to be present
+#model b (AR(1)) is best
 ```
 
  
+### Part e
+
+```{r prob 1.e}
+house_p <- pdata.frame(house, index = "State")
+
+fe_m1_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year, data= house_p, model = "within", effect = "individual")
+summary(fe_m1_a)
+
+fe_m1_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+summary(fe_m1_b)
+
+fe_m1_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
+summary(fe_m1_c)
+
+fe_m1_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
+summary(fe_m1_d)
+
+#model b (AR(1)) is best
+```
+
+### Part f
+
+```{r prob 1.f}
+#M1 + region specific trends
+fe_m2_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West), data= house_p, model = "within", effect = "individual")
+summary(fe_m2_a)
+
+fe_m2_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West) + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+summary(fe_m2_b)
+
+fe_m2_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West) + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
+summary(fe_m2_c)
+
+fe_m2_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + I(Year * South) + I(Year * Midwest) + I(Year * West) + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
+summary(fe_m2_d)
+
+#model b (AR(1)) is best
+```
+
+### Part g
+
+```{r prob 1.g}
+#Using each of four “best” models, forecast what will happen to
+#the size of the Democratic majority in the average state in the 2019 and 2021
+#sessions for the following single scenario. Assume the Democrats resume this
+#state’s governorship in 2019 and the presidency in 2021, and compute appropriate
+#counterfactual values of PartisanMidterm, PresCoattails, GovCoattails. Assume
+#unemployment falls to 3.6% for both elections and construct PresUnem and
+#GovUnem accordingly. Set all trend variables at the average value they will take
+#across regions in 2019 and 2021, respectively. Make appropriate assumptions for
+#the prior value(s) of the outcome variable (e.g., the average Democratic House
+#share in 2017).
+
+#For each model, report or graph the predicted Democratic majority and its 95%
+#confidence (or predictive) interval for the 2019 and 2021 sessions. Describe the
+#substantive impact of your forecast results in as much detail as you feel comfortable,
+#as well as how much confidence we should have in the forecasts. Be sure to
+#consider the scale of the outcome variable in assessing what counts as a substantively
+#large or small change.
+
+#NB: As a check on your work, report the table of counterfactual covariate values
+#you used to make your forecasts. Be very careful when constructing these values
+#to capture to logic of the covariates; each one is tricky in its own way. To carry
+#out the forecasts, use the simcf library’s ldvsimev(), pay close attention to the
+#example code, and think through all modifications you need to make.
+
+
+```
+
+
+### Part h
+
+```{r prob 1.h}
+#Using everything you have learned in this assignment and in the
+#course, which of the four best models should we use to write-up our results,
+#and why? (You may argue for multiple models if you think that’s appropriate.)
+#What are your final substantive conclusions? Substantively, does it make much
+#difference which model we choose? How does this affect the way you would
+#write this analysis up in a paper?
+```
 
 
 
