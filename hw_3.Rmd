@@ -37,7 +37,7 @@ house <- read_csv("statehouse.csv") %>%
          HouseTerm == 2) %>% #2 yr house term only
   arrange(State, Year) %>% #arrange by State, then year within States
   group_by(State) %>% #group rows by State for lagging
-  mutate(DemHouseShareL1 = lag(DemHouseShare, 1), #use dplyr::lag with properly ordered tbl
+  mutate(DemHouseShareL1 = lag(DemHouseShare, 1), #use dplyr::lag with properly ordered and grouped tbl
          DemHouseShareL2 = lag(DemHouseShare, 2),
          DemHouseShareL3 = lag(DemHouseShare, 3),
          DemHouseShareL4 = lag(DemHouseShare, 4))
@@ -56,7 +56,9 @@ length(unique(house$Year))
 
 ### Part b
 
-Looks like AR(1) processes in most states. Some of the observed time-series look non-stationary given no reversion to a mean over the full length of periods. The nonstationary conclusion is also supported by a fair number `adf.test` and `PP.test` p-values falling outside of the conventional p<.05 threshold. States with clear change over the period show decreashing democratic vote shares over the full set of periods, though there are states like New York which oppose this direction. The IPS tests suggest that we could consider the panel as stationary with individual intercepts and trends.
+Looks like AR(1) processes in most states. Some of the observed time-series look non-stationary given no reversion to a mean over the full length of periods. Other States' series, however, look like stationarity assumption is less problematic. The nonstationary conclusion is also supported by a fair number `adf.test` and `PP.test` p-values falling outside of the conventional p<.05 threshold, though these are weak tests. 
+
+States with clear change over the period show decreashing democratic vote shares over the full set of periods, though there are states like New York which oppose this direction. The IPS tests suggest that we could consider the panel as stationary with individual intercepts and trends (i.e. enough of the panel is stationary with these adjustments is what I glean from the test, at least based on my understanding of what it's testing for). While region-specific trends are not a perfect solution, we can't identify a model with case-specific trends so the M2 specification is probably the best we can do for modeling the temporal dynamics enough to achieve stationarity without resorting to an integrated model.
 
 ```{r prob 1b}
 #make some file structure for output
@@ -145,6 +147,8 @@ ggplot(unitroot.tbl, aes(x = p.value, fill = test)) +
 
 ### Part c
 
+The "b" specification where the dynamics are modeled as AR(1) with covariates appears to fit best according to BIC, which penalizes more complicated specifications like other information criteria.
+
 ```{r prob 1.c}
 house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails | State, data = house)
 
@@ -181,6 +185,8 @@ summary(re_m1_d)
 
  
 ### Part d 
+
+Similarly, after including region and year fixed effects in addition to region-specific trends, the AR(1) "b" specification appears to fit best according to BIC.
  
 ```{r prob 1.d}
 #M1 + region specific trends
@@ -219,39 +225,68 @@ summary(re_m2_d)
  
 ### Part e
 
+The "b" specification with one lagged dependent variable (i.e. AR(1)) appears to fit best according to AIC.
+
 ```{r prob 1.e}
+#obtained from
+#https://stackoverflow.com/questions/46186527/how-to-calculate-bic-and-aic-for-a-gmm-model-in-r-using-plm
+AIC_adj <- function(mod){
+  # Number of observations
+  n.N   <- nrow(mod$model)
+  # Residuals vector
+  u.hat <- residuals(mod)
+  # Variance estimation
+  s.sq  <- log( (sum(u.hat^2)/(n.N)))
+  # Number of parameters (incl. constant) + one additional for variance estimation
+  p     <-  length(coef(mod)) + 1
+
+  # Note: minus sign cancels in log likelihood
+  aic <- 2*p  +  n.N * (  log(2*pi) + s.sq  + 1 ) 
+
+  return(aic)
+}
+
 house_p <- pdata.frame(house, index = "State")
 
 fe_m1_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails,  data= house_p, model = "within", effect = "individual")
 summary(fe_m1_a)
+AIC_adj(fe_m1_a)
 
 fe_m1_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
 summary(fe_m1_b)
+AIC_adj(fe_m1_b)
 
 fe_m1_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
 summary(fe_m1_c)
+AIC_adj(fe_m1_c)
 
 fe_m1_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
 summary(fe_m1_d)
-
+AIC_adj(fe_m1_d)
 #model b (AR(1)) is best
 ```
 
 ### Part f
 
+The "b" specification with one lagged dependent variable (i.e. AR(1)) appears to fit best according to AIC.
+
 ```{r prob 1.f}
 #M1 + region specific trends
 fe_m2_a <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_a)
+AIC_adj(fe_m2_a)
 
 fe_m2_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_b)
+AIC_adj(fe_m2_b)
 
 fe_m2_c <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West + DemHouseShareL1 + DemHouseShareL2, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_c)
+AIC_adj(fe_m2_c)
 
 fe_m2_d <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * South + Year * Midwest + Year * West + DemHouseShareL1 + DemHouseShareL2 + DemHouseShareL3, data= house_p, model = "within", effect = "individual")
 summary(fe_m2_d)
+AIC_adj(fe_m2_d)
 
 #model b (AR(1)) is best
 ```
