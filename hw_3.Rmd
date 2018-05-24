@@ -2,7 +2,7 @@
 title: "CSSS 512 HW 3"
 author: "Chris Hess"
 date: "May 10, 2018"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -327,7 +327,7 @@ house <- house %>%
          YearXSouth = Year * South)
 house_p <- pdata.frame(house, index = "State")
 
-#run candidate models
+#run candidate models (use PLM for all, making the RE models a Lagged DV equivalent)
 fe_m1_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
 re_m1_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1, data= house_p, model = "random", effect = "individual")
 fe_m2_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + YearXMidwest + YearXWest + YearXSouth + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
@@ -397,7 +397,7 @@ simparam_re1 <- MASS::mvrnorm(sims,pe.re1_b,vc.re1_b)
 # Pull off the simulated lag coefficient
 simphi_re1 <- simparam_re1[,ncol(simparam_re1)]
 # Put together the "constant" term
-simbetas_re1 <- simparam_re1[,1:ncol(simparam_re1)-1]
+simbetas_re1 <- simparam_re1[,2:ncol(simparam_re1)-1]
 
 # Interpret RE M2
 simparam_re2 <- MASS::mvrnorm(sims,pe.re2_b,vc.re2_b)
@@ -488,7 +488,10 @@ for(i in 1:periods.out){
   xhyp_re2 <- cfChange(xhyp_re2, "PresCoattails", x=1, scen=2)
 } 
 
-xhyp_fe1 #to show the counterfactual values (same in other 3 objects)
+xhyp_fe1 
+xhyp_fe2
+xhyp_re1
+xhyp_re2
 
 #compute average phi for model spec
 phi_fe1 <- mean(simphi_fe1) 
@@ -530,7 +533,7 @@ simmed <- data.frame("FEvsRE" = c(rep("Fixed", 4), rep("Random", 4)),
                       "Year" = rep(c(2019, 2021), 4),
                      "DemHouseShare" = c(sim.fe1$pe, sim.fe2$pe, sim.re1$pe, sim.re2$pe),
                      "lower" = c(sim.fe1$lower, sim.fe2$lower, sim.re1$lower, sim.re2$lower),
-                     "upper" = c(sim.fe1$upper, sim.fe2$upper, sim.re1$lower, sim.re2$upper),
+                     "upper" = c(sim.fe1$upper, sim.fe2$upper, sim.re1$upper, sim.re2$upper),
                      "se" = c(sim.fe1$se, sim.fe2$se, sim.re1$se, sim.re2$se))
 
 #compute average state's ts
@@ -551,6 +554,10 @@ ggplot(simmed, aes(x = Year, y = DemHouseShare, ymax = upper, ymin = lower)) +
 
 
 ### Part h
+
+NB: Y scales vary between facets in plot, otherwise it's hard to show FE M2's gigantic uncertainty while also showing the other three meaningfully.
+
+Though its forecast is the most uncertain, I think that the fixed effects M2 specification is what I would choose for my final model even if it's . The evidence from checking the stationarity of the series suggests that the between-State variation in DemHouseShare levels and in autocorrelation is considerable. Without attempting to model individual intercepts and trends, there's a greater threat that the temporal autocorrelation will bias model estimates. All models predict pretty consistent effects for Coattails and Partisan midterm in terms of sign, but there are real differences in what the models predict substantively as far as the Democrats retaking the average House majority is concerned. The conclusions of the FE M2 model are that there indeed are some effects of presidential coattails and partisan midterm corrections (on average, we expect that 2019 and 2021 will see Democratic gains). However, compared to state differences in levels and dynamics of state legislature composition, the average effects of these two theoretical perspectives is pretty weak and so the forecasts have very wide 95\% prediction intervals. So while within-States we expect that the partisan midterm boost and that there will be a Democratic wave in 2021, we really have no idea what the average level will be. I don't have it worked out in any formal way, but this seems akin to what we get with ARIMA models, where we can really only talk about what leads to differences and not levels given then non-stationarity of the series, despite not integrating the panel in the present case.
 
 ```{r prob 1.h}
 #Using everything you have learned in this assignment and in the
