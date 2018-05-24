@@ -12,8 +12,6 @@ library(plm)
 library(nlme)
 library(simcf)
 
-'%!in%' <- function(x, y)!('%in%'(x, y))
-
 #key theoretical perspectives:
 
 #1. economic performance
@@ -190,7 +188,7 @@ Similarly, after including region and year fixed effects in addition to region-s
  
 ```{r prob 1.d}
 #M1 + region specific trends
-house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + (Year * Midwest) + (Year * South) + (Year * West) | State, data = house)
+house <- groupedData(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + (Year * Midwest) + (Year * South) + (Year * West) | State, data = house)
 
 #no dynamics, just covariates + state random effect
 re_m2_a <- lme(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year * Midwest + Year * South + Year * West,
@@ -324,67 +322,231 @@ house <- house %>%
   na.omit() %>%
   arrange(State, Year) %>%
   group_by(State) %>%
-  mutate(time = row_number(),
-         timeXmidwest = time * Midwest,
-         timeXwest = time * West,
-         timeXsouth = time * South)
+  mutate(YearXMidwest = Year* Midwest,
+         YearXWest = Year * West,
+         YearXSouth = Year * South)
 house_p <- pdata.frame(house, index = "State")
 
-fe_m2_b <- plm(DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + time + timeXmidwest + timeXwest + timeXsouth + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
-summary(fe_m2_b)
+#run candidate models
+fe_m1_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+re_m1_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + DemHouseShareL1, data= house_p, model = "random", effect = "individual")
+fe_m2_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + YearXMidwest + YearXWest + YearXSouth + DemHouseShareL1, data= house_p, model = "within", effect = "individual")
+re_m2_b <- plm(DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + Midwest + West + South + YearXMidwest + YearXWest + YearXSouth + DemHouseShareL1, data= house_p, model = "random", effect = "individual")
 
-# Extract model results
+# Extract model results from FE M1
+pe.fe1_b <- coef(fe_m1_b)                                 # Point estimates of parameters
+vc.fe1_b <- vcov(fe_m1_b)                                   # Var-cov matrix of point estimates
+se.fe1_b <- sqrt(diag(vc.fe1_b))                            # std erros of point estimates
+tstat.fe1_b <- abs(pe.fe1_b/se.fe1_b)                        # t-statistics
+df.fe1_b <- rep(fe_m1_b$df.residual, length(tstat.fe1_b))  # residual degrees of freedom
+pval.fe1_b <- 2*pt(tstat.fe1_b, df.fe1_b, lower.tail=FALSE)  # p-values
+fe.fe1_b <- fixef(fe_m1_b)                                # the (removed) fixed effects by group 
+resid.fe1_b <- resid(fe_m1_b)       
+
+# Extract model results from FE M2
 pe.fe2_b <- coef(fe_m2_b)                                 # Point estimates of parameters
 vc.fe2_b <- vcov(fe_m2_b)                                   # Var-cov matrix of point estimates
 se.fe2_b <- sqrt(diag(vc.fe2_b))                            # std erros of point estimates
 tstat.fe2_b <- abs(pe.fe2_b/se.fe2_b)                        # t-statistics
-df.fe2_b <- rep(fe_m1_b$df.residual, length(tstat.fe2_b))  # residual degrees of freedom
+df.fe2_b <- rep(fe_m2_b$df.residual, length(tstat.fe2_b))  # residual degrees of freedom
 pval.fe2_b <- 2*pt(tstat.fe2_b, df.fe2_b, lower.tail=FALSE)  # p-values
 fe.fe2_b <- fixef(fe_m2_b)                                # the (removed) fixed effects by group 
 resid.fe2_b <- resid(fe_m2_b)                             # Residuals
 
-# Interpret the model using custom code
-sims <- 1000
-simparam <- MASS::mvrnorm(sims,pe.fe2_b,vc.fe2_b)
+# Extract model results from RE M1
+pe.re1_b <- coef(re_m1_b)                                 # Point estimates of parameters
+vc.re1_b <- vcov(re_m1_b)                                   # Var-cov matrix of point estimates
+se.re1_b <- sqrt(diag(vc.re1_b))                            # std erros of point estimates
+tstat.re1_b <- abs(pe.re1_b/se.re1_b)                        # t-statistics
+df.re1_b <- rep(re_m1_b$df.residual, length(tstat.re1_b))  # residual degrees of freedom
+pval.re1_b <- 2*pt(tstat.re1_b, df.re1_b, lower.tail=FALSE)  # p-values
+re.re1_b <- random.effects(re_m1_b)                                # the (removed) fixed efrects by group 
+resid.re1_b <- resid(re_m1_b) 
+
+# Extract model results from RE M2
+pe.re2_b <- coef(re_m2_b)                                 # Point estimates of parameters
+vc.re2_b <- vcov(re_m2_b)                                   # Var-cov matrix of point estimates
+se.re2_b <- sqrt(diag(vc.re2_b))                            # std erros of point estimates
+tstat.re2_b <- abs(pe.re2_b/se.re2_b)                        # t-statistics
+df.re2_b <- rep(re_m2_b$df.residual, length(tstat.re2_b))  # residual degrees of freedom
+pval.re2_b <- 2*pt(tstat.re2_b, df.re2_b, lower.tail=FALSE)  # p-values
+re.re2_b <- random.effects(re_m2_b)                                # the (removed) fixed efrects by group 
+resid.re2_b <- resid(re_m2_b)                      # Residuals
+
+#set number of simulates
+sims <- 10000
+
+# Interpret FE M1
+simparam_fe1 <- MASS::mvrnorm(sims,pe.fe1_b,vc.fe1_b)
 # Pull off the simulated lag coefficient
-simphi <- simparam[,1]
+simphi_fe1 <- simparam_fe1[,ncol(simparam_fe1)]
 # Put together the "constant" term (avg of the FEs, or a specific FE if you like)
 # with the rest of the regressors
-simbetas <- cbind(rep(mean(fe.fe2_b), sims), simparam[,2:ncol(simparam)])
+simbetas_fe1 <- cbind(rep(mean(fe.fe1_b), sims), simparam_fe1[,1:ncol(simparam_fe1)-1])
 
-formula <- "DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + time + timeXmidwest + ytimeXwest + timeXsouth"  
-formula <- as.formula(formula)
-  
+# Interpret FE M2
+simparam_fe2 <- MASS::mvrnorm(sims,pe.fe2_b,vc.fe2_b)
+# Pull off the simulated lag coefficient
+simphi_fe2 <- simparam_fe2[,ncol(simparam_fe2)]
+# Put together the "constant" term (avg of the FEs, or a specific FE if you like)
+# with the rest of the regressors
+simbetas_fe2 <- cbind(rep(mean(fe.fe2_b), sims), simparam_fe2[,1:ncol(simparam_fe2)-1])
+
+# Interpret RE M1
+simparam_re1 <- MASS::mvrnorm(sims,pe.re1_b,vc.re1_b)
+# Pull off the simulated lag coefficient
+simphi_re1 <- simparam_re1[,ncol(simparam_re1)]
+# Put together the "constant" term
+simbetas_re1 <- simparam_re1[,1:ncol(simparam_re1)-1]
+
+# Interpret RE M2
+simparam_re2 <- MASS::mvrnorm(sims,pe.re2_b,vc.re2_b)
+# Pull off the simulated lag coefficient
+simphi_re2 <- simparam_re2[,ncol(simparam_re2)]
+# Put together the "constant" term
+simbetas_re2 <- simparam_re2[,2:ncol(simparam_re2)-1]
+
+# Formula for FE M1
+formula_fe1 <- "DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails"  
+formula_fe1 <- as.formula(formula_fe1)
+
+# Formula for FE M2
+formula_fe2 <- "DemHouseShare ~ PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + YearXMidwest + YearXWest + YearXSouth"  
+formula_fe2 <- as.formula(formula_fe2)
+
+#Formula for RE M1
+formula_re1 <- "DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails"
+formula_re1 <- as.formula(formula_re1)
+
+#Formula for RE M2
+formula_re2 <- "DemHouseShare ~ 1 + PartisanMidterm + PresUnem + GovUnem + PresCoattails + GovCoattails + Year + Midwest + West + South + YearXMidwest + YearXWest + YearXSouth"
+formula_re2 <- as.formula(formula_re2)
+
+#setup simcf xhyp objects
 periods.out <- 2
-xhyp <- cfMake(formula, house_p, periods.out)
+xhyp_fe1 <- cfMake(formula_fe1, house_p, periods.out)
+xhyp_fe2 <- cfMake(formula_fe2, house_p, periods.out)
+xhyp_re1 <- cfMake(formula_re1, house_p, periods.out)
+xhyp_re2 <- cfMake(formula_re2, house_p, periods.out)
+
+#for each of the two forecast periods:
 for(i in 1:periods.out){
-  xhyp <- cfChange(xhyp, "Year", x=2019, scen=1)
-  xhyp <- cfChange(xhyp, "Year", x=2021, scen=2)
+  #FE M1
+  xhyp_fe1 <- cfChange(xhyp_fe1, "Year", x=2019, xpre = 2017, scen=1)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "Year", x=2021, xpre = 2019, scen=2)
 
-  xhyp <- cfChange(xhyp, "PartisanMidterm", x = -1, xpre = 0, scen=1)
-  xhyp <- cfChange(xhyp, "PartisanMidterm", x = 0, scen=2)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "PartisanMidterm", x = -1, xpre = 0, scen=1)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "PartisanMidterm", x = 0, xpre = -1, scen=2)
   
-  xhyp <- cfChange(xhyp, "PresUnem", x=-1*(3.6-5.97), scen=i)
-  xhyp <- cfChange(xhyp, "GovUnem", x=-1*(3.6-5.97), scen=1)
-  xhyp <- cfChange(xhyp, "GovUnem", x=1*(3.6-5.97), scen=i)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "PresUnem", x=-1*(3.6-5.97), scen=i)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "GovUnem", x=-1*(3.6-5.97), scen=1)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "GovUnem", x=1*(3.6-5.97), scen=2)
 
-  xhyp <- cfChange(xhyp, "GovCoattails", x=1, scen=1)
-  xhyp <- cfChange(xhyp, "PresCoattails", x=1, scen=2)
-}  
+  xhyp_fe1 <- cfChange(xhyp_fe1, "GovCoattails", x=1, scen=1)
+  xhyp_fe1 <- cfChange(xhyp_fe1, "PresCoattails", x=1, scen=2)
+  
+  #FE M2
+  xhyp_fe2 <- cfChange(xhyp_fe2, "Year", x=2019, xpre = 2017, scen=1)
+  xhyp_fe2 <- cfChange(xhyp_fe2, "Year", x=2021, xpre = 2019, scen=2)
 
-phi <- mean(simphi) 
-lagY <- mean(house$DemHouseShareL1, na.rm=T) # Hypothetical previous change in Y for simulation
+  xhyp_fe2 <- cfChange(xhyp_fe2, "PartisanMidterm", x = -1, xpre = 0, scen=1)
+  xhyp_fe2 <- cfChange(xhyp_fe2, "PartisanMidterm", x = 0, xpre = -1, scen=2)
+  
+  xhyp_fe2 <- cfChange(xhyp_fe2, "PresUnem", x=-1*(3.6-5.97), scen=i)
+  xhyp_fe2 <- cfChange(xhyp_fe2, "GovUnem", x=-1*(3.6-5.97), scen=1)
+  xhyp_fe2 <- cfChange(xhyp_fe2, "GovUnem", x=1*(3.6-5.97), scen=2)
 
-# Simulate expected values of Y (on original level scale)
-# out to periods.out given hypothetical future values of X,
-# initial lags of the change in Y, and an initial level of Y
-sim.ev2 <- ldvsimev(xhyp,               # The matrix of hypothetical x's
-                    simbetas,           # The matrix of simulated betas
+  xhyp_fe2 <- cfChange(xhyp_fe2, "GovCoattails", x=1, scen=1)
+  xhyp_fe2 <- cfChange(xhyp_fe2, "PresCoattails", x=1, scen=2)
+  
+  #RE M1
+  xhyp_re1 <- cfChange(xhyp_re1, "Year", x=2019, xpre = 2017, scen=1)
+  xhyp_re1 <- cfChange(xhyp_re1, "Year", x=2021, xpre = 2019, scen=2)
+  
+  xhyp_re1 <- cfChange(xhyp_re1, "PartisanMidterm", x = -1, xpre = 0, scen=1)
+  xhyp_re1 <- cfChange(xhyp_re1, "PartisanMidterm", x = 0, xpre = -1, scen=2)
+  
+  xhyp_re1 <- cfChange(xhyp_re1, "PresUnem", x=-1*(3.6-5.97), scen=i)
+  xhyp_re1 <- cfChange(xhyp_re1, "GovUnem", x=-1*(3.6-5.97), scen=1)
+  xhyp_re1 <- cfChange(xhyp_re1, "GovUnem", x=1*(3.6-5.97), scen=2)
+
+  xhyp_re1 <- cfChange(xhyp_re1, "GovCoattails", x=1, scen=1)
+  xhyp_re1 <- cfChange(xhyp_re1, "PresCoattails", x=1, scen=2)
+  
+  #RE M2
+  xhyp_re2 <- cfChange(xhyp_re2, "Year", x=2019, xpre = 2017, scen=1)
+  xhyp_re2 <- cfChange(xhyp_re2, "Year", x=2021, xpre = 2019, scen=2)
+  
+  xhyp_re2 <- cfChange(xhyp_re2, "PartisanMidterm", x = -1, xpre = 0, scen=1)
+  xhyp_re2 <- cfChange(xhyp_re2, "PartisanMidterm", x = 0, xpre = -1, scen=2)
+  
+  xhyp_re2 <- cfChange(xhyp_re2, "PresUnem", x=-1*(3.6-5.97), scen=i)
+  xhyp_re2 <- cfChange(xhyp_re2, "GovUnem", x=-1*(3.6-5.97), scen=1)
+  xhyp_re2 <- cfChange(xhyp_re2, "GovUnem", x=1*(3.6-5.97), scen=2)
+
+  xhyp_re2 <- cfChange(xhyp_re2, "GovCoattails", x=1, scen=1)
+  xhyp_re2 <- cfChange(xhyp_re2, "PresCoattails", x=1, scen=2)
+} 
+
+xhyp_fe1 #to show the counterfactual values (same in other 3 objects)
+
+#compute average phi for model spec
+phi_fe1 <- mean(simphi_fe1) 
+phi_fe2 <- mean(simphi_fe2) 
+phi_re1 <- mean(simphi_re1) 
+phi_re2 <- mean(simphi_re2) 
+
+#compute mean of Y for 2017
+lagY <- mean(house_p$DemHouseShareL1[house_p$Year == 2017])
+
+#simulate expected values for each model spec
+sim.fe1 <- ldvsimev(xhyp_fe1,               # The matrix of hypothetical x's
+                    simbetas_fe1,           # The matrix of simulated betas
                     ci=0.95,            # Desired confidence interval
-                    phi=phi,            # estimated AR parameters; length must match lagY 
-                    lagY=lagY           # lags of y, most recent last
-                    )
-sim.ev2
+                    phi=phi_fe1,            # estimated AR parameters; length must match lagY 
+                    lagY=lagY)  # lags of y, most recent last
+
+sim.fe2 <- ldvsimev(xhyp_fe2,               # The matrix of hypothetical x's
+                    simbetas_fe2,           # The matrix of simulated betas
+                    ci=0.95,            # Desired confidence interval
+                    phi=phi_fe2,            # estimated AR parameters; length must match lagY 
+                    lagY=lagY)  # lags of y, most recent last
+
+sim.re1 <- ldvsimev(xhyp_re1,               # The matrix of hypothetical x's
+                    simbetas_re1,           # The matrix of simulated betas
+                    ci=0.95,            # Desired confidence interval
+                    phi=phi_re1,            # estimated AR parameters; length must match lagY 
+                    lagY=lagY)  # lags of y, most recent last
+
+sim.re2 <- ldvsimev(xhyp_re2,               # The matrix of hypothetical x's
+                    simbetas_re2,           # The matrix of simulated betas
+                    ci=0.95,            # Desired confidence interval
+                    phi=phi_re2,            # estimated AR parameters; length must match lagY 
+                    lagY=lagY)  # lags of y, most recent last
+
+#compile results as tidy df
+simmed <- data.frame("FEvsRE" = c(rep("Fixed", 4), rep("Random", 4)),
+                     "Spec" = rep(c("M1", "M1", "M2", "M2"), 2),
+                      "Year" = rep(c(2019, 2021), 4),
+                     "DemHouseShare" = c(sim.fe1$pe, sim.fe2$pe, sim.re1$pe, sim.re2$pe),
+                     "lower" = c(sim.fe1$lower, sim.fe2$lower, sim.re1$lower, sim.re2$lower),
+                     "upper" = c(sim.fe1$upper, sim.fe2$upper, sim.re1$lower, sim.re2$upper),
+                     "se" = c(sim.fe1$se, sim.fe2$se, sim.re1$se, sim.re2$se))
+
+#compute average state's ts
+house_avg <- house_p %>%
+  filter(Year >= 2000) %>%
+  group_by(Year) %>% 
+  summarize(DemHouseShare = mean(DemHouseShare))
+
+ggplot(simmed, aes(x = Year, y = DemHouseShare, ymax = upper, ymin = lower)) +
+  facet_wrap(Spec ~ FEvsRE, scales = "free_y") +
+  geom_point(color = "blue") +
+  geom_line(color = "blue") +
+  geom_ribbon(alpha = .5, color = NA, fill = "blue") +
+  geom_line(data=house_avg, aes(ymin = NULL, ymax = NULL)) +
+  geom_abline(intercept = .50, slope = 0, linetype = 2, alpha = .5) +
+  scale_y_continuous(labels = scales::percent)
 ```
 
 
